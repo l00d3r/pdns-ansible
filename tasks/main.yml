@@ -32,7 +32,10 @@
 
 - name: Install and configure MySQL database
   ansible.builtin.include_tasks: database-mysql.yml
-  when: "pdns_mysql_databases_credentials | length > 0"
+  when: "pdns_mysql_databases_credentials | length > 0 and inventory_hostname == hostname"
+  with_items: "{{ ansible_play_hosts }}"
+  loop_control:
+    loop_var: hostname
   tags:
     - db
     - mysql

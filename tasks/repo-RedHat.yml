@@ -66,7 +66,7 @@
 - name: Add the PowerDNS debug symbols YUM Repository
   ansible.builtin.yum_repository:
     name: "{{ pdns_auth_powerdns_repo_name }}-debuginfo"
-    file: "{{ pdns_auth_powerdns_repo_name }}-debuginfo"
+    file: "{{ pdns_auth_powerdns_repo_name }}"
     description: PowerDNS Authoritative Server - debug symbols
     baseurl: "{{ pdns_install_repo['yum_debug_symbols_repo_baseurl'] }}"
     gpgkey: "{{ pdns_install_repo['gpg_key'] }}"
@@ -74,6 +74,18 @@
     priority: "90"
     state: present
   when: pdns_install_debug_symbols_package
+  tags:
+    - install
+    - repository
+
+- name: Remove repo files using version suffixed repo files
+  ansible.builtin.file:
+    path: "/etc/yum.repos.d/powerdns-auth-{{ item.0 }}.{{ item.1 }}"
+    state: absent
+  loop: "{{ version | product(extension) | list }}"
+  vars:
+    version: ['master', '50', '49', '48', '47', '46', '45', '44', '43', '42', '41', '40']
+    extension: ['repo']
   tags:
     - install
     - repository

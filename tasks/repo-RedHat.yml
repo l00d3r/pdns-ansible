@@ -51,8 +51,8 @@
 
 - name: Add the PowerDNS YUM Repository
   ansible.builtin.yum_repository:
-    name: "{{ pdns_install_repo['name'] }}"
-    file: "{{ pdns_install_repo['name'] }}"
+    name: "{{ pdns_auth_powerdns_repo_name }}"
+    file: "{{ pdns_auth_powerdns_repo_name }}"
     description: PowerDNS Authoritative Server
     baseurl: "{{ pdns_install_repo['yum_repo_baseurl'] }}"
     gpgkey: "{{ pdns_install_repo['gpg_key'] }}"
@@ -65,8 +65,8 @@
 
 - name: Add the PowerDNS debug symbols YUM Repository
   ansible.builtin.yum_repository:
-    name: "{{ pdns_install_repo['name'] }}-debuginfo"
-    file: "{{ pdns_install_repo['name'] }}"
+    name: "{{ pdns_auth_powerdns_repo_name }}-debuginfo"
+    file: "{{ pdns_auth_powerdns_repo_name }}-debuginfo"
     description: PowerDNS Authoritative Server - debug symbols
     baseurl: "{{ pdns_install_repo['yum_debug_symbols_repo_baseurl'] }}"
     gpgkey: "{{ pdns_install_repo['gpg_key'] }}"

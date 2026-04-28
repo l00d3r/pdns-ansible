@@ -25,8 +25,8 @@ def _assert_debian_repo_layout(host):
     if distro not in debian_os:
         return
 
-    sources_file = host.file('/etc/apt/sources.list.d/powerdns-auth-master.sources')
-    list_file = host.file('/etc/apt/sources.list.d/powerdns-auth-master.list')
+    sources_file = host.file('/etc/apt/sources.list.d/powerdns-auth.sources')
+    list_file = host.file('/etc/apt/sources.list.d/powerdns-auth.list')
 
     if _supports_deb822(host):
         assert sources_file.exists
@@ -40,10 +40,10 @@ def _repo_file(host):
     distro = host.system_info.distribution.lower()
     if distro in debian_os:
         if _supports_deb822(host):
-            return host.file('/etc/apt/sources.list.d/powerdns-auth-master.sources')
-        return host.file('/etc/apt/sources.list.d/powerdns-auth-master.list')
+            return host.file('/etc/apt/sources.list.d/powerdns-auth.sources')
+        return host.file('/etc/apt/sources.list.d/powerdns-auth.list')
     if distro in rhel_os:
-        return host.file('/etc/yum.repos.d/powerdns-auth-master.repo')
+        return host.file('/etc/yum.repos.d/powerdns-auth.repo')
     return None
 
 

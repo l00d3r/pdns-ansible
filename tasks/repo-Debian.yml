@@ -1,91 +1,129 @@
 ---
-- name: "Remove oneline style apt repo file"
-  ansible.builtin.file:
-    path: "/etc/apt/sources.list.d/{{ pdns_install_repo['name'] }}.list"
-    state: absent
-  become: true
+- name: Check if Deb822 repository format is supported by the current distro
+  ansible.builtin.set_fact:
+    _pdns_deb822_supported: >-
+      {{
+        (ansible_distribution == 'Ubuntu' and (ansible_distribution_major_version | int) >= 22) or
+        (ansible_distribution == 'Debian' and (ansible_distribution_major_version | int) >= 11)
+      }}
+  tags:
+    - install
+    - repository
 
-- name: "Install gnupg"
-  ansible.builtin.apt:
-    pkg: gnupg
-    update_cache: true
-    cache_valid_time: 3600
-    force: true
-    state: present
-  register: _gnupg_installed
-  until: _gnupg_installed is succeeded
-  become: true
-
-# In releases older than Debian 12 and Ubuntu 22.04, /etc/apt/keyrings does not exist by default.
-# It SHOULD be created with permissions 0755 if it is needed and does not already exist.
-# See: https://wiki.debian.org/DebianRepository/UseThirdParty
-- name: "Create keyring path on older OS versions ({{ default_pdns_auth_apt_repo_keyring_path }})"
-  ansible.builtin.file:
-    path: "{{ default_pdns_auth_apt_repo_keyring_path }}"
-    state: directory
-    mode: "0755"
-  become: true
+- name: Configure the PowerDNS APT Repository (Deb822-style)
   when:
-    - (ansible_facts['distribution'] == "Ubuntu" and ansible_facts['distribution_major_version'] < "22") or
-      (ansible_facts['distribution'] == "Debian" and ansible_facts['distribution_major_version'] < "12")
+    - (pdns_install_repo['apt_version'] | default('')) | length > 0
+    - _pdns_deb822_supported
+  tags:
+    - install
+    - repository
+  block:
+    - name: Install python3-debian (required by deb822_repository)
+      ansible.builtin.package:
+        name: python3-debian
+        state: present
 
-- name: "Download gpg key"
-  when: not ansible_check_mode # Because get_url always has changed status in check_mode.
-  ansible.builtin.get_url:
-    url: "{{ pdns_install_repo['gpg_key'] }}"
-    dest: "{{ default_pdns_auth_apt_repo_gpg_key }}"
-    mode: "0644"
-    force: true
-  register: _pdns_auth_repo_key_installed
-  until: _pdns_auth_repo_key_installed is succeeded
-  become: true
+    - name: Add the PowerDNS APT Repository (Deb822-style)
+      ansible.builtin.deb822_repository:
+        name: "{{ pdns_install_repo['name'] }}"
+        types: deb
+        uris: "https://{{ pdns_install_repo['apt_repo_origin'] }}/{{ ansible_distribution | lower }}/"
+        suites: "{{ ansible_distribution_release | lower }}-{{ pdns_install_repo['apt_version'] }}"
+        components: main
+        architectures: "{{ pdns_apt_repo_arch }}"
+        signed_by: "{{ pdns_install_repo['gpg_key'] }}"
+      notify: update the apt cache
 
-- name: "Installing repository {{ ansible_facts['distribution'] }}"
-  ansible.builtin.copy:
-    dest: "/etc/apt/sources.list.d/powerdns-authoritative.sources"
+    - name: Remove the legacy PowerDNS APT .list file when using Deb822
+      ansible.builtin.file:
+        path: "/etc/apt/sources.list.d/{{ pdns_install_repo['name'] }}.list"
+        state: absent
+      notify: update the apt cache
+
+- name: Configure the PowerDNS APT Repository (legacy format)
+  when: >-
+    ((pdns_install_repo['apt_version'] | default('')) | length == 0) or
+    (not _pdns_deb822_supported)
+  tags:
+    - install
+    - repository
+  block:
+    - name: Install gnupg
+      ansible.builtin.package:
+        name: gnupg
+        state: present
+
+    - name: Check if apt-key is available
+      ansible.builtin.stat:
+        path: /usr/bin/apt-key
+      register: _pdns_apt_key_cmd
+
+    - name: Import the PowerDNS APT Repository key from URL
+      ansible.builtin.apt_key:
+        url: "{{ pdns_install_repo['gpg_key'] }}"
+        id: "{{ pdns_install_repo['gpg_key_id'] | default('') }}"
+        state: present
+      when:
+        - _pdns_apt_key_cmd.stat.exists
+        - pdns_install_repo['gpg_key'] is regex("^[a-z]{3,}://")
+
+    - name: Import the PowerDNS APT Repository key from File
+      ansible.builtin.apt_key:
+        data: "{{ lookup('file', pdns_install_repo['gpg_key']) }}"
+        id: "{{ pdns_install_repo['gpg_key_id'] | default('') }}"
+        state: present
+      when:
+        - _pdns_apt_key_cmd.stat.exists
+        - not pdns_install_repo['gpg_key'] is regex("^[a-z]{3,}://")
+
+    - name: Import the PowerDNS APT Repository key from URL (without apt-key)
+      ansible.builtin.get_url:
+        url: "{{ pdns_install_repo['gpg_key'] }}"
+        dest: "/etc/apt/trusted.gpg.d/{{ pdns_install_repo['name'] }}.asc"
+        owner: root
+        group: root
+        mode: "0644"
+      when:
+        - not _pdns_apt_key_cmd.stat.exists
+        - pdns_install_repo['gpg_key'] is regex("^[a-z]{3,}://")
+
+    - name: Import the PowerDNS APT Repository key from File (without apt-key)
+      ansible.builtin.copy:
+        content: "{{ lookup('file', pdns_install_repo['gpg_key']) }}"
+        dest: "/etc/apt/trusted.gpg.d/{{ pdns_install_repo['name'] }}.asc"
+        owner: root
+        group: root
+        mode: "0644"
+      when:
+        - not _pdns_apt_key_cmd.stat.exists
+        - not pdns_install_repo['gpg_key'] is regex("^[a-z]{3,}://")
+
+    - name: Add the PowerDNS APT Repository (legacy format)
+      ansible.builtin.apt_repository:
+        filename: "{{ pdns_install_repo['name'] }}"
+        repo: "{{ pdns_install_repo['apt_repo'] }}"
+        state: present
+      notify: update the apt cache
+
+    - name: Remove the Deb822 PowerDNS APT .sources file when using legacy format
+      ansible.builtin.file:
+        path: "/etc/apt/sources.list.d/{{ pdns_install_repo['name'] }}.sources"
+        state: absent
+      notify: update the apt cache
+
+- name: Pin the PowerDNS APT Repository
+  ansible.builtin.template:
+    src: pdns.pin.j2
+    dest: /etc/apt/preferences.d/pdns
     owner: root
     group: root
-    mode: 0644
-    content: |
-      Types: deb
-      Enabled: yes
-      URIs: {{ pdns_install_repo['apt_repo'] }}
-      Suites: {{ pdns_install_repo['apt_repo_suite'] }}
-      Components: {{ pdns_auth_apt_repo_deb_component }}
-      Architectures: {{ pdns_auth_apt_repo_arch }}
-      Signed-By: {{ default_pdns_auth_apt_repo_gpg_key }}
-  register: _pdns_auth_repo_apt_file
-  become: true
-
-- name: "Debian | Create /etc/apt/preferences.d/"
-  ansible.builtin.file:
-    path: /etc/apt/preferences.d/
-    state: directory
-    mode: "0755"
-  when:
-    - pdns_auth_apt_repo_priority is defined
-    - pdns_auth_apt_repo_priority | int
-  become: true
-
-- name: "Configuring the weight for APT"
-  ansible.builtin.copy:
-    dest: "/etc/apt/preferences.d/pdns"
-    content: |
-      Package: pdns-*
-      Pin: origin {{ pdns_auth_apt_repo_origin }}
-      Pin-Priority: {{ pdns_auth_apt_repo_priority }}
-    owner: root
     mode: "0644"
-  when:
-    - pdns_auth_apt_repo_priority is defined
-    - pdns_auth_apt_repo_priority | int
-    - pdns_package_name is defined
-    - pdns_package_name
-  become: true
+  tags:
+    - install
+    - repository
 
-- name: "Update apt cache if repo was added"
-  ansible.builtin.apt:
-    update_cache: true
-  when: _pdns_auth_repo_apt_file.changed or _pdns_auth_repo_key_installed.changed
-  become: true
-
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - install
+    - repository

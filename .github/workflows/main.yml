@@ -9,7 +9,7 @@ jobs:
   Lint:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run ansible-lint
         uses: ansible/ansible-lint@main
   Tests:
@@ -19,19 +19,17 @@ jobs:
       fail-fast: false
       matrix:
         ansible:
-          - "2.14"
           - "2.15"
           - "2.16"
         scenario:
-          - pdns-47
           - pdns-48
           - pdns-49
+          - pdns-50
           - pdns-master
           - pdns-os-repos
-          - systemd-no-overrides
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install python
         uses: actions/setup-python@v5
         with:

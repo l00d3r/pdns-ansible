@@ -1,12 +1,14 @@
 ---
 
-- name: Include OS-specific variables
-  ansible.builtin.include_vars: "{{ item }}"
-  with_first_found:
-    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+- name: Include OS-specific variables (generic to specific)
+  ansible.builtin.include_vars: "{{ role_path }}/vars/{{ item }}"
+  loop:
+    - "{{ ansible_os_family }}.yml"
     - "{{ ansible_distribution }}.yml"
     - "{{ ansible_os_family }}-{{ ansible_distribution_major_version }}.yml"
-    - "{{ ansible_os_family }}.yml"
+    - "{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml"
+  when:
+    - lookup('ansible.builtin.fileglob', role_path ~ '/vars/' ~ item, wantlist=True) | length > 0
   tags:
     - always
 
@@ -24,53 +26,104 @@
 
 - name: Get version of PowerDNS instance
   ansible.builtin.include_tasks: inspect.yml
+  when: pdns_package_state != 'absent'
   tags:
     - db
     - mysql
+    - pgsql
     - sqlite
+    - config
+
+- name: Configure SELinux
+  ansible.builtin.include_tasks: selinux.yml
+  when:
+    - pdns_package_state != 'absent'
+    - pdns_manage_selinux | bool
+    - ansible_selinux is defined
+    - ansible_selinux.status == 'enabled'
+  tags:
+    - selinux
     - config
 
 - name: Install and configure MySQL database
   ansible.builtin.include_tasks: database-mysql.yml
-  when: "pdns_mysql_databases_credentials | length > 0 and inventory_hostname == hostname"
   with_items: "{{ ansible_play_hosts }}"
   loop_control:
     loop_var: hostname
+  when:
+    - "pdns_mysql_databases_credentials | length > 0 and inventory_hostname == hostname"
+    - >-
+      (
+        pdns_package_state != 'absent'
+        and pdns_mysql_manage_database | bool
+      ) or pdns_mysql_packages_state == 'absent'
+    - >-
+      (pdns_backends | dict2items
+      | selectattr('key', 'match', '^gmysql(:.*)?$')
+      | list
+      | length) > 0
   tags:
+    - install
+    - config
     - db
     - mysql
 
+- name: Install and configure PostgreSQL database
+  ansible.builtin.include_tasks: database-pgsql.yml
+  when:
+    - >-
+      (
+        pdns_package_state != 'absent'
+        and pdns_pgsql_manage_database | bool
+      ) or pdns_pgsql_packages_state == 'absent'
+    - >-
+      (pdns_backends | dict2items
+      | selectattr('key', 'match', '^gpgsql(:.*)?$')
+      | list
+      | length) > 0
+  tags:
+    - install
+    - config
+    - db
+    - pgsql
+
 - name: Install and configure SQlite database
   ansible.builtin.include_tasks: database-sqlite3.yml
-  when: "pdns_sqlite_databases_locations | length > 0"
+  when:
+    - >-
+      (
+        pdns_package_state != 'absent'
+        and pdns_sqlite_databases_locations | length > 0
+      ) or pdns_sqlite_package_state == 'absent'
   tags:
+    - install
+    - config
     - db
     - sqlite
 
 - name: Install and configure LMDB database
   ansible.builtin.include_tasks: database-lmdb.yml
-  when: "pdns_lmdb_databases_locations | length > 0"
+  when:
+    - pdns_package_state != 'absent'
+    - pdns_lmdb_databases_locations | length > 0
   tags:
+    - config
     - db
     - lmdb
 
 - name: Build config file
   ansible.builtin.include_tasks: configure.yml
+  when: pdns_package_state != 'absent'
   tags:
     - config
 
-- name: Configure SELinux
-  ansible.builtin.include_tasks: selinux.yml
-  when: ansible_selinux is defined and ansible_selinux.status == 'enabled'
-  tags:
-    - selinux
-    - config
-
-- name: Start and enable the PowerDNS service
+- name: Start and enable the PowerDNS service (systemd)
   throttle: 1
-  ansible.builtin.service:
+  ansible.builtin.systemd:
     name: "{{ pdns_service_name }}"
     state: "{{ pdns_service_state }}"
     enabled: "{{ pdns_service_enabled }}"
+    masked: "{{ pdns_service_masked }}"
+  when: pdns_package_state != 'absent'
   tags:
     - service

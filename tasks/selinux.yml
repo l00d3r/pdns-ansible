@@ -1,10 +1,17 @@
 ---
+
 - name: Allow mysql connect from pdns in selinux
   ansible.posix.seboolean:
     name: pdns_can_network_connect_db
-    state: yes
-    persistent: yes
-  when: "pdns_mysql_databases_credentials | length > 0"
+    state: true
+    persistent: true
+  when: >-
+    (pdns_backends | dict2items
+    | selectattr('key', 'search', '^g(mysql|pgsql)(:.*)?$')
+    | list
+    | length) > 0
+  tags:
+    - config
 
 - name: Allow pdns to bind to udp high ports
   community.general.seport:
@@ -12,3 +19,5 @@
     proto: udp
     setype: dns_port_t
     state: present
+  tags:
+    - config

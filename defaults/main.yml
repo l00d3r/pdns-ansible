@@ -3,26 +3,33 @@
 # By default, no PowerDNS Authoritative Server repository will be configured by the role
 pdns_install_repo: ""
 
-# To install tje PowerDNS Authoritative Server from the 'master' official repository
+# To install the PowerDNS Authoritative Server from the 'master' official repository
 # use the following playbook snippet
 # - hosts: all
 #   roles:
 #    - { role: PowerDNS.pdns,
-#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_master }}"
+#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_master }}" }
 #
-# To install the PowerDNS Authoritative Server from the '4.1.x' official repository
+# To install the PowerDNS Authoritative Server from the '4.8.x' official repository
 # use the following playbook snippet
 # - hosts: all
 #   roles:
 #    - { role: PowerDNS.pdns,
-#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_41 }}"
+#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_48 }}" }
 
-# To install the PowerDNS Authoritative Server from the '4.2.x' official repository
+# To install the PowerDNS Authoritative Server from the '4.9.x' official repository
 # use the following playbook snippet
 # - hosts: all
 #   roles:
 #    - { role: PowerDNS.pdns,
-#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_42 }}"
+#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_49 }}" }
+
+# To install the PowerDNS Authoritative Server from the '5.0.x' official repository
+# use the following playbook snippet
+# - hosts: all
+#   roles:
+#    - { role: PowerDNS.pdns,
+#        pdns_install_repo: "{{ pdns_auth_powerdns_repo_50 }}" }
 #
 # To make this role configure a custom repository and install the
 # PowerDNS Authoritative Server from it override the `pdns_install_repo` variable
@@ -31,6 +38,7 @@ pdns_install_repo: ""
 #   vars:
 #     pdns_install_repo:
 #       apt_repo_origin: "example.com"  # Pin the PowerDNS packages to the provided repository origin
+#       apt_version: "auth-50"          # Deb822 suite suffix (appended to release codename, Ubuntu >=22.04 / Debian >=11)
 #       apt_repo: "deb http://example.com/{{ ansible_distribution | lower }} {{ ansible_distribution_release | lower }}/pdns main"
 #       gpg_key: "http://example.com/MYREPOGPGPUBKEY.asc" # repository public GPG key
 #       gpg_key_id: "MYREPOGPGPUBKEYID" # to avoid to reimport the key each time the role is executed
@@ -41,7 +49,7 @@ pdns_install_repo: ""
 
 # Install the EPEL repository.
 # EPEL is needed to satisfy some PowerDNS Authoritative Server dependencies like protobuf
-pdns_install_epel: True
+pdns_install_epel: true
 
 # The name of the PowerDNS Authoritative Server package
 pdns_package_name: "{{ default_pdns_package_name }}"
@@ -51,11 +59,19 @@ pdns_package_name: "{{ default_pdns_package_name }}"
 #     where each YUM repository can contains multiple versions of the same package.
 pdns_package_version: ""
 
+# Desired state of the PowerDNS Authoritative Server package.
+# Supported values include present, latest and absent.
+pdns_package_state: "present"
+
 # Install the PowerDNS Authoritative Server debug symbols package
-pdns_install_debug_symbols_package: False
+pdns_install_debug_symbols_package: false
 
 # The name of the PowerDNS Authoritative Server debug symbols package
 pdns_debug_symbols_package_name: "{{ default_pdns_debug_symbols_package_name }}"
+
+# Desired state of the debug symbols package when managed by this role.
+# Supported values include present, latest and absent.
+pdns_debug_symbols_package_state: "{{ pdns_package_state }}"
 
 # The user and group the PowerDNS Authoritative Server process will run as.
 # NOTE: at the moment, we don't create a user as we assume the package creates
@@ -71,21 +87,25 @@ pdns_service_name: "pdns"
 
 # State of the PowerDNS Authoritative Server service
 pdns_service_state: "started"
-pdns_service_enabled: "yes"
+pdns_service_enabled: true
+pdns_service_masked: false
 
 # When True, disable the automated restart of the PowerDNS service
-pdns_disable_handlers: False
+pdns_disable_handlers: false
+
+# When true, manage SELinux booleans and ports on SELinux-enabled systems.
+pdns_manage_selinux: true
 
 # PowerDNS Authoritative Server configuration file and directory
 pdns_config_dir: "{{ default_pdns_config_dir }}"
 pdns_config_file: "pdns.conf"
 
-# Ddict containing all configuration options, except for backend
+# Dict containing all configuration options, except for backend
 # configuration and the "config-dir", "setuid" and "setgid" directives.
 pdns_config: {}
 # pdns_config:
-#  master: yes
-#  slave: no
+#  primary: true
+#  secondary: false
 #  local-address: '192.0.2.53'
 #  local-ipv6: '2001:DB8:1::53'
 #  local-port: '5300'
@@ -98,6 +118,10 @@ pdns_service_overrides: "{{ default_pdns_service_overrides }}"
 # Dictionary of packages that should be installed to enable the backends.
 # backendname: packagename
 pdns_backends_packages: "{{ default_pdns_backends_packages }}"
+
+# Desired state of backend packages.
+# Supported values include present, latest and absent.
+pdns_backends_packages_state: "{{ pdns_package_state }}"
 
 # A dict with all the backends you'd like to configure.
 # This default starts just the bind-backend with an empty config file
@@ -118,8 +142,46 @@ pdns_backends:
 #     'dbname': dns
 #   'bind':
 #     'config': '/etc/named/named.conf'
-#     'hybrid':  yes
+#     'hybrid': true
+#     'check-interval': 60
 #     'dnssec-db': '{{ pdns_config_dir }}/dnssec.db'
+
+# Additional directories to create before writing pdns_config_files.
+# Each item can be:
+# - a string path
+# - or a dict with path/owner/group/mode
+#
+# Examples:
+# pdns_config_additional_dirs:
+#   - path: "{{ pdns_config['include-dir'] }}"
+#     mode: "0775"
+#   - "{{ pdns_config_dir }}/zones"
+#   - "/var/lib/powerdns/rpz"
+pdns_config_additional_dirs: []
+
+# Files to copy into the PowerDNS configuration directory.
+# Each item supports:
+# - src: path on the controller
+# - content: inline file content
+# - dest: destination path (absolute, or relative to pdns_config_dir)
+# - owner/group/mode: optional file attributes
+# - dir_owner/dir_group/dir_mode: optional parent directory attributes
+#
+# Examples:
+# pdns_config_files:
+#   - src: files/pdns/my-named.conf
+#     dest: named.conf
+#     mode: "0640"
+#   - dest: pipe-backend.py
+#     mode: "0750"
+#     content: |
+#       #!/usr/bin/env python3
+#       print("backend")
+pdns_config_files: []
+
+# Enable role-managed MySQL backend bootstrap tasks.
+# When false, the role will only write gmysql backend settings in pdns.conf and won't connect to MySQL/MariaDB.
+pdns_mysql_manage_database: true
 
 # Administrative credentials to create the PowerDNS Authoritative Server MySQL backend database and user.
 pdns_mysql_databases_credentials: {}
@@ -136,21 +198,111 @@ pdns_mysql_databases_credentials: {}
 #     'priv_host':
 #       - "localhost"
 
+# Use a UNIX socket for role-internal MySQL operations (db create, grants, schema checks/import).
+pdns_mysql_query_use_socket: false
+
+# Packages needed to install MySQL dependencies.
+# By default, OS-specific vars files provide the actual package list.
+pdns_mysql_packages: "{{ default_pdns_mysql_packages }}"
+
+# Desired state of MySQL dependency packages.
+# Supported values include present, latest and absent.
+pdns_mysql_packages_state: "{{ pdns_package_state }}"
+
+# UNIX socket path used when pdns_mysql_query_use_socket is true.
+pdns_mysql_unix_socket: "/var/run/mysqld/mysqld.sock"
+
+# MySQL/MariaDB CLI command used for schema checks/import.
+pdns_backends_mysql_cmd: "{{ default_pdns_backends_mysql_cmd }}"
+
+# Additional arguments appended to the MySQL/MariaDB CLI command used for schema checks/import.
+pdns_mysql_cli_extra_args: "{{ default_pdns_mysql_cli_extra_args }}"
+
+# Authentication plugin used for created/granted MySQL users.
+# Keep empty to let the module use legacy password flow (mysql_native_password path).
+# Set to caching_sha2_password for MySQL 8.4/9+ servers where mysql_native_password is unavailable.
+pdns_mysql_auth_plugin: ""
+
+# Password update strategy for mysql_user task.
+# Accepted values: always, on_create, on_new_username.
+# Keep empty for role defaults:
+# - on_create when pdns_mysql_auth_plugin is set
+# - always when pdns_mysql_auth_plugin is empty
+pdns_mysql_user_update_password: ""
+
+# Enable role-managed PostgreSQL backend bootstrap tasks.
+# When false, the role will only write gpgsql backend settings in pdns.conf and won't connect to PostgreSQL.
+pdns_pgsql_manage_database: true
+
+# Administrative credentials to create the PowerDNS Authoritative Server PostgreSQL backend database and user.
+pdns_pgsql_databases_credentials: {}
+# pdns_pgsql_databases_credentials:
+#   gpgsql:
+#     priv_user: postgres
+#     priv_password: my_privileged_password
+
+# Use a UNIX socket for role-internal PostgreSQL operations (db create, schema checks/import).
+pdns_pgsql_query_use_socket: false
+
+# Packages needed to install PostgreSQL dependencies.
+# By default, OS-specific vars files provide the actual package list.
+pdns_pgsql_packages: "{{ default_pdns_pgsql_packages }}"
+
+# Desired state of PostgreSQL dependency packages.
+# Supported values include present, latest and absent.
+pdns_pgsql_packages_state: "{{ pdns_package_state }}"
+
+# UNIX socket path used when pdns_pgsql_query_use_socket is true.
+pdns_pgsql_unix_socket: "/var/run/postgresql"
+
 # This will create the PowerDNS Authoritative Server backend SQLite database
 # in the given locations.
-# NOTE: Requries the SQLite CLI tools to be available in the machine and the gsqlite3
+# NOTE: Requires the SQLite CLI tools to be available in the machine and the gsqlite3
 # backend to be installed on the machine.
 pdns_sqlite_databases_locations: []
 
+# Desired state of the SQLite CLI dependency package.
+# Supported values include present, latest and absent.
+pdns_sqlite_package_state: "{{ pdns_package_state }}"
+
 # This will create the PowerDNS Authoritative Server backend LMDB database
 # in the given locations.
-# NOTE: Requries lmdb backend to be installed on the machine.
+# NOTE: Requires lmdb backend to be installed on the machine.
 pdns_lmdb_databases_locations: []
+
+# By default, we'll load the MySQL default schema. Set this to false to disable loading the schema
+# (e.g. when importing your own dump later on).
+# NOTE: This controls only schema check/import. User/database creation and grants are still executed
+# when pdns_mysql_manage_database is true and administrative credentials are provided.
+pdns_mysql_schema_load: true
 
 # Override the schema used to initialize the MySQL database
 # By default, this role tries to detect the correct file
 pdns_mysql_schema_file: ""
 
+# Run MySQL backend bootstrap tasks only on first node?
+# This includes database creation, grants and schema import.
+# This should be used if you install pdns on a cluster
+pdns_mysql_schema_on_first_node_only: true
+
+# By default, we'll load the PostgreSQL default schema. Set this to false to disable loading the schema
+# (e.g. when importing your own dump later on).
+# NOTE: This controls only schema check/import. User/database creation is still executed
+# when pdns_pgsql_manage_database is true and administrative credentials are provided.
+pdns_pgsql_schema_load: true
+
+# Override the schema used to initialize the PostgreSQL database
+# By default, this role tries to detect the correct file
+pdns_pgsql_schema_file: ""
+
+# Run pgsql backend bootstrap tasks only on first node?
+# This includes database/user creation and schema import.
+# This should be used if you install pdns on a cluster
+pdns_pgsql_schema_on_first_node_only: true
+
 # Override the schema used to initialize the SQLite database
 # By default, this role tries to detect the correct file
 pdns_sqlite_schema_file: ""
+
+# Set debug mode flag from Ansible verbosity
+pdns_verbose: "{{ ansible_verbosity | int >= 2 }}"

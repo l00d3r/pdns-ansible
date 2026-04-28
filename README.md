@@ -9,7 +9,7 @@ An Ansible role created by the folks behind PowerDNS to setup the [PowerDNS Auth
 
 ## Requirements
 
-An Ansible 2.12 or higher installation.
+An Ansible 2.15 or higher installation.
 
 ## Dependencies
 
@@ -30,25 +30,26 @@ By default, the PowerDNS Authoritative Server is installed from the software rep
 - hosts: all
   roles:
     - { role: PowerDNS.pdns,
-        pdns_install_repo: "{{ pdns_auth_powerdns_repo_master }}"
+        pdns_install_repo: "{{ pdns_auth_powerdns_repo_master }}" }
 
-# Install the PowerDNS Authoritative Server from the '4.7.x' official repository
-- hosts: all
-  roles:
-    - { role: PowerDNS.pdns,
-        pdns_install_repo: "{{ pdns_auth_powerdns_repo_47 }}"
-        
+
 # Install the PowerDNS Authoritative Server from the '4.8.x' official repository
 - hosts: all
   roles:
     - { role: PowerDNS.pdns,
-        pdns_install_repo: "{{ pdns_auth_powerdns_repo_48 }}"
-        
+        pdns_install_repo: "{{ pdns_auth_powerdns_repo_48 }}" }
+
 # Install the PowerDNS Authoritative Server from the '4.9.x' official repository
 - hosts: all
   roles:
     - { role: PowerDNS.pdns,
-        pdns_install_repo: "{{ pdns_auth_powerdns_repo_49 }}"
+        pdns_install_repo: "{{ pdns_auth_powerdns_repo_49 }}" }
+
+# Install the PowerDNS Authoritative Server from the '5.0.x' official repository
+- hosts: all
+  roles:
+    - { role: PowerDNS.pdns,
+        pdns_install_repo: "{{ pdns_auth_powerdns_repo_50 }}" }
 ```
 
 The examples above, show how to install the PowerDNS Authoritative Server from the official PowerDNS repositories
@@ -60,6 +61,7 @@ The examples above, show how to install the PowerDNS Authoritative Server from t
     pdns_install_repo:
       name: "powerdns" # the name of the repository
       apt_repo_origin: "example.com"  # used to pin the PowerDNS packages to the provided repository
+      apt_version: "auth-50"  # deb822 suites suffix (appended to release codename)
       apt_repo: "deb http://example.com/{{ ansible_distribution | lower }} {{ ansible_distribution_release | lower }}/pdns main"
       gpg_key: "http://example.com/MYREPOGPGPUBKEY.asc" # repository public GPG key
       gpg_key_id: "MYREPOGPGPUBKEYID" # to avoid to reimport the key each time the role is executed
@@ -72,12 +74,16 @@ The examples above, show how to install the PowerDNS Authoritative Server from t
 It is also possible to install the PowerDNS Authoritative Server from custom repositories as demonstrated in the example above.
 **Note:** These repositories are ignored on Arch Linux
 
+When `pdns_install_repo.apt_version` is set, this role configures Debian-family repositories using
+`ansible.builtin.deb822_repository` on supported releases (Ubuntu `>=22.04`, Debian `>=11`).
+If `apt_version` is omitted, the legacy `apt_repo` string is used with `ansible.builtin.apt_repository`.
+
 ```yaml
- pdns_install_epel: True
+ pdns_install_epel: true
 ```
 
 By default, install EPEL to satisfy some PowerDNS Authoritative Server dependencies like `protobuf`.
-To skip the installtion of EPEL set `pdns_install_epel` to `False`.
+To skip the installation of EPEL set `pdns_install_epel` to `false`.
 
 ```yaml
 pdns_package_name: "{{ default_pdns_package_name }}"
@@ -92,7 +98,14 @@ pdns_package_version: ""
 Optionally, allow to set a specific version of the PowerDNS Authoritative Server package to be installed.
 
 ```yaml
-pdns_install_debug_symbols_package: False
+pdns_package_state: "present"
+```
+
+Desired package state for `pdns_package_name`. Supported values include `present`, `latest`, and `absent`.
+When set to `absent`, the role removes packages and skips runtime configuration tasks.
+
+```yaml
+pdns_install_debug_symbols_package: false
 ```
 
 Install the PowerDNS Authoritative Server debug symbols.
@@ -101,12 +114,20 @@ Install the PowerDNS Authoritative Server debug symbols.
 pdns_debug_symbols_package_name: "{{ default_pdns_debug_symbols_package_name }}"
 ```
 
-The name of the PowerDNS Authoritative Server debug package to be installed when `pdns_install_debug_symbols_package` is `True`,
+The name of the PowerDNS Authoritative Server debug package to be installed when `pdns_install_debug_symbols_package` is `true`,
 `pdns-debuginfo` on RedHat-like systems and `pdns-server-dbg` on Debian-like systems.
+
+```yaml
+pdns_debug_symbols_package_state: "{{ pdns_package_state }}"
+```
+
+Desired package state for the debug symbols package when it is managed by this role.
 
 ```yaml
 pdns_user: pdns
 pdns_group: pdns
+pdns_file_owner: root
+pdns_file_group: "{{ pdns_group }}"
 ```
 
 The user and group the PowerDNS Authoritative Server process will run as. <br />
@@ -121,16 +142,24 @@ Name of the PowerDNS service.
 
 ```yaml
 pdns_service_state: "started"
-pdns_service_enabled: "yes"
+pdns_service_enabled: true
+pdns_service_masked: false
 ```
 
 Allow to specify the desired state of the PowerDNS Authoritative Server service.
 
 ```yaml
-pdns_disable_handlers: False
+pdns_disable_handlers: false
 ```
 
 Disable automated service restart on configuration changes.
+
+```yaml
+pdns_manage_selinux: true
+```
+
+Enable management of SELinux booleans and ports on SELinux-enabled systems.
+Set to `false` to skip SELinux changes entirely.
 
 ```yaml
 pdns_config_dir: "{{ default_pdns_config_dir }}"
@@ -149,8 +178,8 @@ For example:
 
 ```yaml
 pdns_config:
-  master: yes
-  slave: no
+  primary: true
+  secondary: false
   local-address: '192.0.2.53'
   local-ipv6: '2001:DB8:1::53'
   local-port: '5300'
@@ -160,14 +189,16 @@ configures PowerDNS Authoritative Server to listen incoming DNS requests on port
 
 ```yaml
 pdns_service_overrides:
-  User: {{ pdns_user }}
-  Group: {{ pdns_group }}
+  User: "{{ pdns_user }}"
+  Group: "{{ pdns_group }}"
 ```
 
 Dict with overrides for the service (systemd only).
 This can be used to change any systemd settings in the `[Service]` category.
 
 ```yaml
+pdns_backends_packages: "{{ default_pdns_backends_packages }}"
+pdns_backends_packages_state: "{{ pdns_package_state }}"
 pdns_backends:
   bind:
     config: '/dev/null'
@@ -191,15 +222,68 @@ pdns_backends:
     'dbname': dns
   'bind':
     'config': '/etc/named/named.conf'
-    'hybrid':  yes
+    'hybrid': true
     'dnssec-db': '{{ pdns_config_dir }}/dnssec.db'
 ```
 
 By default this role starts just the bind-backend with an empty config file.
+`pdns_backends_packages_state` controls install/update/removal of backend packages.
 
 ```yaml
-pdns_mysql_databases_credentials: {}
+pdns_config_additional_dirs: []
 ```
+
+Optional list of directories created before `pdns_config_files` are copied.
+Each item can be either a path string or an object with `path`, `owner`, `group`, `mode`.
+For example:
+
+```yaml
+pdns_config_additional_dirs:
+  - path: "{{ pdns_config['include-dir'] }}"
+    mode: "0775"
+  - "{{ pdns_config_dir }}/zones"
+  - "/var/lib/powerdns/rpz"
+```
+
+```yaml
+pdns_config_files: []
+```
+
+Optional list of files copied before the service is started.
+Each item must define `dest` and one of `src` or `content`.
+`dest` can be absolute or relative to `pdns_config_dir`.
+Executable backend helper scripts should be shipped via this variable too
+(for example with `mode: "0750"`).
+For example:
+
+```yaml
+pdns_config_files:
+  - src: files/pdns/named.conf
+    dest: named.conf
+    mode: "0640"
+  - dest: pipe-backend.py
+    mode: "0750"
+    content: |
+      #!/usr/bin/env python3
+      print("example")
+```
+
+```yaml
+pdns_mysql_manage_database: true
+pdns_mysql_databases_credentials: {}
+pdns_mysql_query_use_socket: false
+pdns_mysql_unix_socket: "/var/run/mysqld/mysqld.sock"
+pdns_backends_mysql_cmd: "{{ default_pdns_backends_mysql_cmd }}"
+pdns_mysql_cli_extra_args: "{{ default_pdns_mysql_cli_extra_args }}"
+pdns_mysql_auth_plugin: ""
+pdns_mysql_user_update_password: ""
+pdns_mysql_packages: "{{ default_pdns_mysql_packages }}"
+pdns_mysql_packages_state: "present"
+```
+
+`pdns_mysql_manage_database` controls whether this role performs MySQL/MariaDB bootstrap operations
+(database creation, user/grants management and schema checks/import).
+Set it to `false` for config-only mode.
 
 Administrative credentials for the MySQL backend used to create the PowerDNS Authoritative Server databases and users.
 For example:
@@ -222,6 +306,48 @@ pdns_mysql_databases_credentials:
 Notice that this must only contain the credentials
 for the `gmysql` backends provided in `pdns_backends`.
 
+When `pdns_mysql_query_use_socket` is set to `true`, role-internal MySQL operations
+(database/user creation and schema load checks/import) use the UNIX socket path defined by
+`pdns_mysql_unix_socket` instead of TCP host/port.
+`pdns_backends_mysql_cmd` and `pdns_mysql_cli_extra_args` control the MySQL/MariaDB CLI invocation used for schema checks/import.
+`pdns_mysql_packages` allows overriding OS-specific MySQL dependency package lists.
+`pdns_mysql_packages_state` controls install/update/removal of those dependency packages.
+
+```yaml
+pdns_pgsql_manage_database: true
+pdns_pgsql_databases_credentials: {}
+pdns_pgsql_packages: "{{ default_pdns_pgsql_packages }}"
+pdns_pgsql_packages_state: "present"
+```
+
+`pdns_pgsql_manage_database` controls whether this role performs PostgreSQL bootstrap operations
+(database/user creation and schema checks/import).
+Set it to `false` for config-only mode.
+
+Administrative credentials for the PostgreSQL backend used to create the PowerDNS Authoritative Server databases and users.
+For example:
+
+```yaml
+pdns_pgsql_databases_credentials:
+  'gpgsql:one':
+    priv_user: postgres
+    priv_password: my_first_password
+```
+
+Notice that this must only contain the credentials
+for the `gpgsql` backends provided in `pdns_backends`.
+
+```yaml
+pdns_pgsql_query_use_socket: false
+pdns_pgsql_unix_socket: "/var/run/postgresql"
+```
+
+When `pdns_pgsql_query_use_socket` is set to `true`, role-internal PostgreSQL operations
+(database/user creation and schema load checks/import) use the UNIX socket path defined by
+`pdns_pgsql_unix_socket` instead of TCP host/port.
+`pdns_pgsql_packages` allows overriding OS-specific PostgreSQL dependency package lists.
+`pdns_pgsql_packages_state` controls install/update/removal of those dependency packages.
+
 ```yaml
 pdns_sqlite_databases_locations: []
 ```
@@ -230,23 +356,61 @@ Locations of the SQLite3 databases that have to be created if using the
 `gsqlite3` backend.
 
 ```yaml
+pdns_sqlite_package_state: "present"
+```
+
+Desired package state for the SQLite CLI dependency used during schema bootstrap.
+
+```yaml
 pdns_lmdb_databases_locations: []
 ```
 
 Locations of the LMDB databases that have to be created if using the
 `lmdb` backend.
 
-Locations of the mysql and sqlite3 base schema.
+Locations of the mysql, pgsql and sqlite3 base schema.
 When set, this value is used and they are not automatically detected.
 ```yaml
+pdns_mysql_schema_load: true
 pdns_mysql_schema_file: ''
+pdns_mysql_schema_on_first_node_only: true
 
-pdns_sqlite3_schema_file: ''
+pdns_pgsql_schema_load: true
+pdns_pgsql_schema_file: ''
+pdns_pgsql_schema_on_first_node_only: true
+
+pdns_sqlite_schema_file: ''
 ```
+
+`pdns_mysql_schema_load` and `pdns_pgsql_schema_load` only control schema check/import tasks.
+When SQL bootstrap is enabled (`pdns_mysql_manage_database` / `pdns_pgsql_manage_database`) and
+administrative credentials are provided, user/database creation still runs even if schema load is disabled.
+
+`pdns_mysql_schema_on_first_node_only` and `pdns_pgsql_schema_on_first_node_only` control
+cluster bootstrap execution for shared SQL backends (database/user/grants/schema import).
+
+```yaml
+pdns_verbose: "{{ ansible_verbosity | int >= 2 }}"
+```
+
+Enable verbose/debug role behavior. This currently controls whether sensitive SQL task details
+are hidden in logs (`false`) or visible for troubleshooting (`true`).
+
+## Role Tags
+
+This role uses the following standard tags so filtered runs stay predictable with `--tags` / `--skip-tags`:
+
+- `install`: package/module installation or software provisioning.
+- `config`: configuration/state changes (templates, files, directories, settings, data bootstrap).
+- `service`: service state management and service-related handlers.
+- `repository`: repository/key/pinning setup and repository cache refresh.
+
+Some prerequisite tasks intentionally have multiple tags (for example `install` + `repository`,
+or `install` + `config`) so filtered runs include the dependencies required by the selected path.
 
 ## Example Playbooks
 
-Run as a master using the bind backend (when you already have a `named.conf` file):
+Run as a primary using the bind backend (when you already have a `named.conf` file):
 
 ```yaml
 - hosts: ns1.example.net
@@ -254,14 +418,14 @@ Run as a master using the bind backend (when you already have a `named.conf` fil
     - { role: PowerDNS.pdns }
   vars:
     pdns_config:
-      master: true
+      primary: true
       local-address: '192.0.2.53'
     pdns_backends:
       bind:
         config: '/etc/named/named.conf'
 ```
 
-Install the latest '41' build of PowerDNS Authoritative Server enabling the MySQL backend.
+Install the latest '50' build of PowerDNS Authoritative Server enabling the MySQL backend.
 Provides also the MySQL administrative credentials to automatically create and initialize the PowerDNS Authoritative Server user and database:
 
 ```yaml
@@ -270,8 +434,8 @@ Provides also the MySQL administrative credentials to automatically create and i
     - { role: PowerDNS.pdns }
   vars:
     pdns_config:
-      master: true
-      slave: false
+      primary: true
+      secondary: false
       local-address: '192.0.2.77'
     pdns_backends:
       gmysql:
@@ -286,12 +450,12 @@ Provides also the MySQL administrative credentials to automatically create and i
         priv_password: myrootpass
         priv_host:
           - "%"
-    pdns_install_repo: "{{ pdns_auth_powerdns_repo_41 }}"
+    pdns_install_repo: "{{ pdns_auth_powerdns_repo_50 }}"
 ```
 
 **NOTE:** In this case the role will use the credentials provided in `pdns_mysql_databases_credentials` to automatically create and initialize the user (`user`, `password`) and database (`dbname`) connecting to the MySQL server (`host`, `port`).
 
-Configure PowerDNS Authoritative Server in 'master' mode reading zones from two different PostgreSQL databases:
+Configure PowerDNS Authoritative Server in 'primary' mode reading zones from two different PostgreSQL databases:
 
 ```yaml
 - hosts: ns2.example.net
@@ -299,7 +463,7 @@ Configure PowerDNS Authoritative Server in 'master' mode reading zones from two 
     - { role: PowerDNS.pdns }
   vars:
     pdns_config:
-      master: true
+      primary: true
       local-port: 5300
       local-address: '192.0.2.111'
     pdns_backends:
@@ -324,15 +488,15 @@ in the location specified by the `database_name` variable.
   roles:
     - { role: PowerDNS.pdns }
   vars:
-    database_name: '/var/lib/powerdns/db.sqlite'
+    database_name: '/var/lib/powerdns/pdns.sqlite3'
     pdns_config:
-      master: true
-      slave: false
+      primary: true
+      secondary: false
       local-address: '192.0.2.73'
     pdns_backends:
       gsqlite3:
         database: "{{ database_name }}"
-        dnssec: yes
+        dnssec: true
     pdns_sqlite_databases_locations:
       - "{{ database_name }}"
 ```
@@ -353,7 +517,9 @@ To test all the scenarios run
 
 To run a custom molecule command
 
-    $ tox -e ansible214 -- molecule test -s pdns-49
+    $ tox -e ansible216 -- molecule test -s pdns-50
+
+The Molecule backend matrix validates LMDB, SQLite3, MySQL, MariaDB, BIND and PostgreSQL instance profiles.
 
 ## License
 

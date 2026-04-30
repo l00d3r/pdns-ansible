@@ -10,7 +10,7 @@ pdns_apt_repo_arch: >-
   {{ pdns_apt_repo_arch_map.get((ansible_architecture | default('amd64')) | lower,
                                 (ansible_architecture | default('amd64')) | lower) }}
 
-pdns_auth_powerdns_repo_name: powerdns-auth
+pdns_auth_powerdns_repo_name: powerdns-authoritative
 
 pdns_auth_powerdns_repo_master:
   apt_repo_origin: "repo.powerdns.com"

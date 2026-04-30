@@ -1,5 +1,17 @@
 ---
 
+- name: Remove repo files using version suffixed repo files
+  ansible.builtin.file:
+    path: "/etc/yum.repos.d/powerdns-auth-{{ item.0 }}.{{ item.1 }}"
+    state: absent
+  loop: "{{ version | product(extension) | list }}"
+  vars:
+    version: ['master', '50', '49', '48', '47', '46', '45', '44', '43', '42', '41', '40']
+    extension: ['repo']
+  tags:
+    - install
+    - repository
+
 - name: Install EPEL repositories on RedHat-family distributions
   when: pdns_install_epel
   tags:
@@ -74,18 +86,6 @@
     priority: "90"
     state: present
   when: pdns_install_debug_symbols_package
-  tags:
-    - install
-    - repository
-
-- name: Remove repo files using version suffixed repo files
-  ansible.builtin.file:
-    path: "/etc/yum.repos.d/powerdns-auth-{{ item.0 }}.{{ item.1 }}"
-    state: absent
-  loop: "{{ version | product(extension) | list }}"
-  vars:
-    version: ['master', '50', '49', '48', '47', '46', '45', '44', '43', '42', '41', '40']
-    extension: ['repo']
   tags:
     - install
     - repository

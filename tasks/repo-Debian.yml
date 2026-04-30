@@ -1,4 +1,14 @@
 ---
+- name: Remove repo files using version suffixed sources and list files
+  ansible.builtin.file:
+    path: "/etc/apt/sources.list.d/powerdns-auth-{{ item.0 }}.{{ item.1 }}"
+    state: absent
+  notify: update the apt cache
+  loop: "{{ version | product(extension) | list }}"
+  vars:
+    version: ['master', '50', '49', '48', '47', '46', '45', '44', '43', '42', '41', '40']
+    extension: ['list', 'sources']
+
 - name: Check if Deb822 repository format is supported by the current distro
   ansible.builtin.set_fact:
     _pdns_deb822_supported: >-
@@ -121,16 +131,6 @@
   tags:
     - install
     - repository
-
-- name: Remove repo files using version suffixed sources and list files
-  ansible.builtin.file:
-    path: "/etc/apt/sources.list.d/powerdns-auth-{{ item.0 }}.{{ item.1 }}"
-    state: absent
-  notify: update the apt cache
-  loop: "{{ version | product(extension) | list }}"
-  vars:
-    version: ['master', '50', '49', '48', '47', '46', '45', '44', '43', '42', '41', '40']
-    extension: ['list', 'sources']
 
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
